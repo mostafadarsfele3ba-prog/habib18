@@ -1,0 +1,795 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>درس × لعبة - الخلايا والحياة</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;800&display=swap');
+        body { font-family: 'Tajawal', sans-serif; background-color: #f0fdfa; user-select: none; overflow-x: hidden; }
+        .glass-panel { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1); }
+        .btn-bounce { transition: transform 0.2s; }
+        .btn-bounce:active { transform: scale(0.95); }
+        
+        /* Matching Game Styles */
+        .match-item { transition: all 0.3s; }
+        .match-item.selected { background-color: #fef08a; border-color: #eab308; transform: scale(1.05); }
+        .match-item.matched { background-color: #86efac; border-color: #22c55e; opacity: 0.7; pointer-events: none; }
+        .match-item.error { background-color: #fca5a5; border-color: #ef4444; animation: shake 0.5s; }
+        .match-item.timeout-error { background-color: #fecaca; border-color: #ef4444; opacity: 0.6; pointer-events: none; }
+        
+        /* Bubbles Style */
+        .game-bubble {
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.9), rgba(186, 230, 253, 0.7) 60%, rgba(56, 189, 248, 0.4));
+            box-shadow: inset 0 0 15px rgba(255,255,255,0.8), 0 4px 10px rgba(0,0,0,0.15);
+            border: 1px solid rgba(255,255,255,0.6);
+            backdrop-filter: blur(4px);
+            color: #0c4a6e;
+            text-shadow: 0 1px 2px rgba(255,255,255,0.8);
+        }
+
+        /* Targets Style */
+        .horizontal-target {
+            background-color: white;
+            border: 4px solid;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Robust CSS Animations */
+        @keyframes fallDown { from { top: -150px; } to { top: 120%; } }
+        @keyframes moveRight { from { left: -150px; } to { left: 120%; } }
+        @keyframes moveLeft { from { left: 100%; } to { left: -150px; } }
+        
+        .anim-fall { animation: fallDown 25s linear forwards; }
+        .anim-right { animation: moveRight 20s linear forwards; }
+        .anim-left { animation: moveLeft 20s linear forwards; }
+
+        @keyframes shake { 0%, 100% {transform: translateX(0);} 25% {transform: translateX(-5px);} 75% {transform: translateX(5px);} }
+        .popup-anim { animation: popIn 0.3s ease-out forwards; }
+        @keyframes popIn { 0% { opacity: 0; transform: scale(0.5); } 100% { opacity: 1; transform: scale(1); } }
+    </style>
+</head>
+<body class="text-gray-800 min-h-screen pb-20 relative">
+
+    <!-- GLOBAL FIXED HEADER (Safe top bar for logo) -->
+    <header class="fixed top-0 w-full bg-white/95 backdrop-blur-md shadow-sm z-50 h-20 flex items-center px-4 md:px-8 border-b border-teal-100 transition-all">
+        <img src="logo.jpeg" alt="Logo" class="w-14 h-14 md:w-16 md:h-16 rounded-xl shadow-sm object-cover border border-teal-200 bg-white" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2YxZjVmOSIvPjx0ZXh0IHg9IjUwIiB5PSI1MCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjIwIiBmaWxsPSIjOTRjM2Q4IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjMiPkxvZ288L3RleHQ+PC9zdmc+'; this.onerror=null;">
+        <h1 class="mr-4 font-extrabold text-teal-800 text-lg md:text-2xl drop-shadow-sm">درس × لعبة</h1>
+    </header>
+
+    <!-- Main Container (Pushed down to avoid overlap with fixed header) -->
+    <div class="max-w-4xl mx-auto p-4 relative pt-28" id="main-container">
+        
+        <!-- Main Dashboard Screen -->
+        <div id="screen-home" class="space-y-6">
+            <!-- Header Section -->
+            <div class="glass-panel rounded-2xl p-6 shadow-lg relative overflow-hidden flex flex-col md:flex-row items-center gap-6 mt-4">
+                <div class="absolute -top-10 -right-10 w-32 h-32 bg-teal-200 rounded-full opacity-50 blur-xl"></div>
+                <div class="absolute -bottom-10 -left-10 w-32 h-32 bg-blue-200 rounded-full opacity-50 blur-xl"></div>
+                
+                <div class="w-full md:w-1/2 text-center md:text-right z-10 flex flex-col justify-center">
+                    <h2 class="text-2xl md:text-3xl font-bold text-gray-700 mb-2">الصف الأول الإعدادي - الترم الأول</h2>
+                    <h3 class="text-xl md:text-2xl text-teal-600 font-extrabold mb-4">درس: الخلايا والحياة</h3>
+                    
+                    <div class="mt-4 border-t border-teal-100 pt-4">
+                        <p class="text-sm text-gray-500 font-bold">مع الأستاذ</p>
+                        <p class="text-2xl font-bold text-teal-800">حبيب بُشرى</p>
+                    </div>
+                </div>
+
+                <div class="w-full md:w-1/2 z-10 flex justify-center md:justify-end">
+                    <img src="pic.jpeg" alt="صورة المعلم" class="w-48 h-48 sm:w-64 sm:h-64 md:w-full md:max-w-[300px] aspect-square rounded-2xl border-4 border-teal-400 shadow-xl object-cover bg-teal-50" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2YxZjVmOSIvPjx0ZXh0IHg9IjUwIiB5PSI1MCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjIwIiBmaWxsPSIjOTRjM2Q4IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjMiPkxvZ288L3RleHQ+PC9zdmc+'; this.onerror=null;">
+                </div>
+            </div>
+
+            <h3 class="text-center font-bold text-gray-600 mt-8 mb-4">اختر اللعبة لتبدأ التحدي</h3>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- 1. MCQ -->
+                <button onclick="startGame('mcq')" class="btn-bounce bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-xl shadow-md flex items-center justify-between">
+                    <div class="text-right">
+                        <h4 class="font-bold text-lg">الاختيار من متعدد</h4>
+                        <p class="text-xs text-blue-100">15 سؤال لاختبار معلوماتك</p>
+                    </div>
+                    <i class="fa-solid fa-list-check text-3xl opacity-80"></i>
+                </button>
+
+                <!-- 2. Bubbles -->
+                <button onclick="startGame('bubbles')" class="btn-bounce bg-gradient-to-r from-cyan-500 to-cyan-600 text-white p-4 rounded-xl shadow-md flex items-center justify-between">
+                    <div class="text-right">
+                        <h4 class="font-bold text-lg">الفقاعات المتساقطة</h4>
+                        <p class="text-xs text-cyan-100">المس الفقاعة الصحيحة قبل سقوطها</p>
+                    </div>
+                    <i class="fa-solid fa-droplet text-3xl opacity-80"></i>
+                </button>
+
+                <!-- 3. Shoot (Targets) -->
+                <button onclick="startGame('shoot')" class="btn-bounce bg-gradient-to-r from-red-500 to-red-600 text-white p-4 rounded-xl shadow-md flex items-center justify-between">
+                    <div class="text-right">
+                        <h4 class="font-bold text-lg">التنشين المتحرك</h4>
+                        <p class="text-xs text-red-100">صِد الهدف الصحيح المتحرك</p>
+                    </div>
+                    <i class="fa-solid fa-bullseye text-3xl opacity-80"></i>
+                </button>
+
+                <!-- 4. True/False -->
+                <button onclick="startGame('tf')" class="btn-bounce bg-gradient-to-r from-orange-500 to-orange-600 text-white p-4 rounded-xl shadow-md flex items-center justify-between">
+                    <div class="text-right">
+                        <h4 class="font-bold text-lg">صح أم خطأ</h4>
+                        <p class="text-xs text-orange-100">حدد صحة العبارات</p>
+                    </div>
+                    <i class="fa-solid fa-check-double text-3xl opacity-80"></i>
+                </button>
+
+                <!-- 5. Matching -->
+                <button onclick="startGame('match')" class="btn-bounce bg-gradient-to-r from-green-500 to-green-600 text-white p-4 rounded-xl shadow-md flex items-center justify-between">
+                    <div class="text-right">
+                        <h4 class="font-bold text-lg">لعبة التوصيل</h4>
+                        <p class="text-xs text-green-100">اربط بين المفاهيم الصحيحة</p>
+                    </div>
+                    <i class="fa-solid fa-link text-3xl opacity-80"></i>
+                </button>
+
+                <!-- 6. Fill in the Blanks -->
+                <button onclick="startGame('fill')" class="btn-bounce bg-gradient-to-r from-purple-500 to-purple-600 text-white p-4 rounded-xl shadow-md flex items-center justify-between">
+                    <div class="text-right">
+                        <h4 class="font-bold text-lg">الكلمة المفقودة</h4>
+                        <p class="text-xs text-purple-100">أكمل الفراغ لتكتمل العبارة</p>
+                    </div>
+                    <i class="fa-solid fa-puzzle-piece text-3xl opacity-80"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Shared Internal Game Header (Compact) -->
+        <div id="game-header" class="hidden mb-6 bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-3">
+            <div class="flex justify-between items-center w-full">
+                <button onclick="goHome()" class="btn-bounce bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg font-bold text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-arrow-right"></i> للرئيسية
+                </button>
+                
+                <div class="flex items-center gap-3">
+                    <div class="text-left hidden sm:block">
+                        <p class="text-xs text-gray-500 font-bold">أ. حبيب بُشرى</p>
+                        <p class="text-sm font-bold text-teal-700">الخلايا والحياة</p>
+                    </div>
+                    <img src="pic.jpeg" class="w-10 h-10 rounded-full border-2 border-teal-500 object-cover bg-gray-100" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjQ1IiByPSIyMCIgZmlsbD0iI2RjZmNlNyIvPjxjaXJjbGUgY3g9IjUwIiBjeT0iMTA1IiByPSI0NSIgZmlsbD0iI2RjZmNlNyIvPjwvc3ZnPg==';">
+                </div>
+            </div>
+            
+            <div class="flex justify-between items-center w-full border-t border-gray-100 pt-2">
+                <div id="timer-container" class="flex flex-col w-1/3 transition-opacity duration-300">
+                    <div class="flex items-center gap-1 text-red-600 font-bold text-sm">
+                        <i class="fa-solid fa-stopwatch"></i> الوقت: <span id="timer-display">60</span>ث
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                        <div id="timer-bar" class="bg-red-500 h-1.5 rounded-full" style="width: 100%; transition: width 1s linear;"></div>
+                    </div>
+                </div>
+
+                <h2 id="current-game-title" class="text-base sm:text-lg font-bold text-teal-700 text-center w-1/3">عنوان اللعبة</h2>
+                
+                <div class="text-sm sm:text-base font-bold text-gray-600 bg-gray-50 px-3 py-1 rounded-lg border w-1/3 text-left">
+                    النتيجة: <span id="current-score" class="text-teal-600">0</span>/15
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Screens Container -->
+        
+        <!-- 1. MCQ Game -->
+        <div id="screen-mcq" class="hidden game-screen">
+            <div class="glass-panel p-6 rounded-2xl">
+                <div class="w-full bg-gray-200 rounded-full h-2.5 mb-6">
+                    <div id="mcq-progress" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+                <h3 id="mcq-question" class="text-2xl font-bold text-gray-800 mb-6 text-center leading-relaxed"></h3>
+                <div id="mcq-options" class="grid grid-cols-1 gap-3"></div>
+            </div>
+        </div>
+
+        <!-- 2. Bubbles Game (Vertical Falling) -->
+        <div id="screen-bubbles" class="hidden game-screen">
+            <div class="glass-panel p-6 rounded-2xl">
+                <div class="w-full bg-gray-200 rounded-full h-2.5 mb-4">
+                    <div id="bubbles-progress" class="bg-cyan-500 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+                <div class="bg-cyan-50 border border-cyan-200 rounded-xl p-4 mb-4 text-center">
+                    <h3 id="bubbles-question" class="text-xl font-bold text-gray-800"></h3>
+                </div>
+                <div id="bubbles-game-area" class="relative w-full h-[450px] overflow-hidden rounded-xl shadow-inner bg-gradient-to-b from-blue-50 to-cyan-100">
+                    <!-- Bubbles injected via JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. Shoot Game (Horizontal Targets) -->
+        <div id="screen-shoot" class="hidden game-screen">
+            <div class="glass-panel p-6 rounded-2xl">
+                <div class="w-full bg-gray-200 rounded-full h-2.5 mb-4">
+                    <div id="shoot-progress" class="bg-red-500 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+                <div class="bg-red-50 border border-red-200 rounded-xl p-4 mb-4 text-center">
+                    <h3 id="shoot-question" class="text-xl font-bold text-gray-800"></h3>
+                </div>
+                <div id="shoot-game-area" class="relative w-full h-[450px] overflow-hidden bg-gray-900 border-4 border-gray-700 rounded-xl shadow-inner">
+                    <!-- Targets injected via JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. True/False Game -->
+        <div id="screen-tf" class="hidden game-screen">
+            <div class="glass-panel p-6 rounded-2xl flex flex-col">
+                <div class="w-full bg-gray-200 rounded-full h-2.5 mb-6">
+                    <div id="tf-progress" class="bg-orange-500 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+                <p class="text-center font-bold text-gray-600 mb-6 text-lg">اقرأ العبارة وحدد: صح أم خطأ؟</p>
+                <div class="flex items-center justify-center mb-8">
+                    <div id="tf-statement" class="bg-white border-2 border-orange-300 text-gray-800 font-bold text-xl md:text-2xl py-8 px-6 rounded-2xl shadow-md w-full text-center min-h-[150px] flex items-center justify-center leading-relaxed"></div>
+                </div>
+                <div class="grid grid-cols-2 gap-4 w-full">
+                    <button onclick="checkTF(true)" class="btn-bounce bg-green-500 hover:bg-green-600 text-white p-6 rounded-xl flex flex-col items-center gap-2 shadow-lg">
+                        <i class="fa-solid fa-check text-5xl mb-2"></i><span class="font-bold text-xl md:text-2xl">صح</span>
+                    </button>
+                    <button onclick="checkTF(false)" class="btn-bounce bg-red-500 hover:bg-red-600 text-white p-6 rounded-xl flex flex-col items-center gap-2 shadow-lg">
+                        <i class="fa-solid fa-xmark text-5xl mb-2"></i><span class="font-bold text-xl md:text-2xl">خطأ</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. Match Game -->
+        <div id="screen-match" class="hidden game-screen">
+            <div class="glass-panel p-4 rounded-2xl">
+                <div class="w-full bg-gray-200 rounded-full h-2.5 mb-4">
+                    <div id="match-progress" class="bg-green-600 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+                <p class="text-center text-gray-600 mb-4 font-bold">المس عنصراً من القائمة الأولى ثم ما يناسبه من الثانية</p>
+                <div class="flex gap-4 justify-between" id="match-container">
+                    <div class="w-1/2 space-y-2 flex flex-col" id="match-list-a"></div>
+                    <div class="w-1/2 space-y-2 flex flex-col" id="match-list-b"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 6. Fill in the Blanks Game -->
+        <div id="screen-fill" class="hidden game-screen">
+            <div class="glass-panel p-4 md:p-6 rounded-2xl flex flex-col">
+                <div class="w-full bg-gray-200 rounded-full h-2.5 mb-4 md:mb-6">
+                    <div id="fill-progress" class="bg-purple-500 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+                <p class="text-center font-bold text-gray-600 mb-4 md:mb-6 text-sm md:text-lg">اختر الكلمة المناسبة لتكملة العبارة</p>
+                <div class="bg-white border-2 border-purple-200 py-6 px-4 md:py-8 md:px-6 rounded-2xl shadow-sm text-center mb-6 flex items-center justify-center min-h-[120px] md:min-h-[160px]">
+                    <h3 id="fill-sentence" class="text-lg sm:text-xl md:text-3xl font-bold text-gray-800 leading-loose"></h3>
+                </div>
+                <div id="fill-options" class="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Feedback Modal -->
+    <div id="feedback-modal" class="fixed inset-0 bg-black bg-opacity-60 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm">
+        <div id="feedback-content" class="bg-white rounded-2xl p-6 max-w-sm w-full text-center transform scale-50 opacity-0 transition-all duration-300">
+            <div id="feedback-icon" class="text-6xl mb-4"></div>
+            <h3 id="feedback-title" class="text-2xl font-bold mb-2"></h3>
+            <p id="feedback-msg" class="text-gray-600 mb-6 font-bold text-lg leading-relaxed"></p>
+            <button onclick="closeFeedback()" class="bg-teal-500 text-white font-bold py-3 px-8 rounded-xl shadow-md w-full hover:bg-teal-600 transition-colors">متابعة</button>
+        </div>
+    </div>
+
+    <!-- End Game Modal -->
+    <div id="endgame-modal" class="fixed inset-0 bg-teal-900 bg-opacity-95 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
+            <i class="fa-solid fa-trophy text-6xl text-yellow-400 mb-4"></i>
+            <h2 class="text-3xl font-bold text-teal-800 mb-2">اكتملت اللعبة!</h2>
+            <p class="text-xl text-gray-700 mb-6 font-bold">لقد حققت <span id="endgame-score" class="text-teal-600 text-2xl">15</span> من 15</p>
+            <button onclick="goHome()" class="w-full bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-bold py-4 rounded-xl shadow-lg text-xl btn-bounce">
+                العودة للرئيسية
+            </button>
+        </div>
+    </div>
+
+    <!-- WhatsApp -->
+    <a href="https://wa.me/201008822782" target="_blank" class="fixed bottom-6 right-6 bg-green-500 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg hover:bg-green-600 hover:scale-110 transition-all z-40 btn-bounce border-2 border-white z-50">
+        <i class="fa-brands fa-whatsapp text-3xl"></i>
+    </a>
+
+    <script>
+        // --- Utility Functions ---
+        function shuffleArray(originalArray) {
+            let array = originalArray.slice(); 
+            let currentIndex = array.length, randomIndex, tempValue;
+            while (currentIndex > 0) {
+                randomIndex = Math.floor(Math.random() * currentIndex);
+                currentIndex--;
+                tempValue = array[currentIndex];
+                array[currentIndex] = array[randomIndex];
+                array[randomIndex] = tempValue;
+            }
+            return array;
+        }
+
+        // --- Audio Engine (Disabled as requested) ---
+        function initAudio() {}
+        document.addEventListener('pointerdown', initAudio, { once: true });
+        document.addEventListener('keydown', initAudio, { once: true });
+        function playSound(type) { return; }
+
+        // --- Data Datasets (10 Normal + 5 Hard) per Game (Based ONLY on the provided PDF) ---
+        
+        const mcqData = [
+            { q: "الوحدة الأساسية لبناء ووظيفة الكائن الحى هى:", options: ["الخلية", "النسيج", "العضو", "الجهاز"], ans: "الخلية" },
+            { q: "ترتيب مستويات التنظيم فى الكائن الحى عديد الخلايا هو: خلية، ثم نسيج، ثم عضو، ثم:", options: ["جهاز", "كائن حى فقط", "ذرة", "خلية أخرى"], ans: "جهاز" },
+            { q: "الكائنات الحية التى تحتوى خلاياها على مادة وراثية غير محاطة بغشاء نووى تسمى:", options: ["أوليات النواة", "حقيقيات النواة", "الكائنات عديدة الخلايا", "النباتات فقط"], ans: "أوليات النواة" },
+            { q: "الكائنات الحية التى تحتوى خلاياها على نواة حقيقية محاطة بغشاء نووى تسمى:", options: ["حقيقيات النواة", "أوليات النواة", "البكتيريا فقط", "الفيروسات فقط"], ans: "حقيقيات النواة" },
+            { q: "من أمثلة الكائنات وحيدة الخلية حقيقية النواة:", options: ["الأميبا والبراميسيوم واليوجلينا", "الإنسان والحيوانات", "النباتات الزهرية", "الفطريات عديدة الخلايا"], ans: "الأميبا والبراميسيوم واليوجلينا" },
+            { q: "جميع أوليات النواة (مثل البكتيريا) هى كائنات:", options: ["وحيدة الخلية", "عديدة الخلايا دائمًا", "نباتية فقط", "حيوانية فقط"], ans: "وحيدة الخلية" },
+            { q: "من التراكيب الموجودة فى الخلية النباتية ولا توجد فى الخلية الحيوانية:", options: ["جدار الخلية والبلاستيدات الخضراء والفجوة العصارية الكبيرة", "الميتوكوندريا", "الريبوسومات", "الغشاء البلازمى"], ans: "جدار الخلية والبلاستيدات الخضراء والفجوة العصارية الكبيرة" },
+            { q: "من التركيب الموجود فى الخلية الحيوانية ولا يوجد فى الخلية النباتية:", options: ["الجسم المركزى (السنتروسوم)", "النواة", "السيتوبلازم", "الميتوكوندريا"], ans: "الجسم المركزى (السنتروسوم)" },
+            { q: "الخلية البكتيرية تفتقر إلى النواة الحقيقية ولكنها تحتوى على:", options: ["مادة وراثية طليقة فى السيتوبلازم", "نواة محاطة بغشاء نووى", "ميتوكوندريا عديدة", "بلاستيدات خضراء"], ans: "مادة وراثية طليقة فى السيتوبلازم" },
+            { q: "الخلايا التى لها القدرة على تجديد نفسها بالانقسام والتمايز إلى أنواع خلايا متخصصة تسمى:", options: ["الخلايا الجذعية", "الخلايا العصبية فقط", "الخلايا العضلية فقط", "خلايا الدم الحمراء فقط"], ans: "الخلايا الجذعية" },
+            // Hard
+            { q: "الخلايا الجذعية غير متمايزة، أى أنها:", options: ["لم تتخصص بعد لأداء وظيفة معينة", "متخصصة تمامًا لوظيفة واحدة فقط", "لا يمكنها الانقسام إطلاقًا", "لا توجد إلا فى النبات"], ans: "لم تتخصص بعد لأداء وظيفة معينة" },
+            { q: "تختلف وظيفة الخلية تبعًا لاختلاف تركيبها، فمثلًا خلايا النسيج العضلى تتكون من ألياف عضلية طويلة تمكنها من:", options: ["أداء وظيفة الانقباض والانبساط", "التمثيل الضوئى", "إفراز الهرمونات فقط", "نقل الأكسجين فقط"], ans: "أداء وظيفة الانقباض والانبساط" },
+            { q: "يأمل الباحثون أن تساعد دراسات الخلايا الجذعية فى إنتاج خلايا سليمة تحل محل الخلايا المصابة بـ:", options: ["الأمراض", "الأصباغ فقط", "الألوان المختلفة فقط", "الفيتامينات الناقصة فقط"], ans: "الأمراض" },
+            { q: "بنك الخلايا الجذعية يلعب دورًا مهمًا فى مستقبل:", options: ["العلاج الطبى", "صناعة الأغذية فقط", "الزراعة فقط", "صناعة النسيج فقط"], ans: "العلاج الطبى" },
+            { q: "الفرق بين الكائنات وحيدة الخلية وعديدة الخلايا هو أن الأولى يتكون جسمها من خلية واحدة تقوم بجميع العمليات الحيوية بينما الثانية:", options: ["يتكون جسمها من خلايا عديدة متخصصة", "لا تحتوى على خلايا إطلاقًا", "خلاياها كلها متطابقة الوظيفة", "أصغر حجمًا من الأولى دائمًا"], ans: "يتكون جسمها من خلايا عديدة متخصصة" }
+        ];
+
+        const bubblesData = [
+            { q: "يتكون جسم الإنسان مثلًا من أجهزة، وكل جهاز يتكون من أعضاء، وكل عضو يتكون من:", options: ["أنسجة", "خلايا فقط مباشرة", "ذرات فقط", "جزيئات فقط"], ans: "أنسجة" },
+            { q: "كل نسيج يتكون بدوره من عدة:", options: ["خلايا", "أعضاء", "أجهزة", "كائنات"], ans: "خلايا" },
+            { q: "من أمثلة أوليات النواة:", options: ["البكتيريا", "الأميبا", "الإنسان", "النباتات"], ans: "البكتيريا" },
+            { q: "من أمثلة حقيقيات النواة وحيدة الخلية:", options: ["الأميبا", "البكتيريا", "الأسد", "الفول"], ans: "الأميبا" },
+            { q: "من أمثلة حقيقيات النواة عديدة الخلايا:", options: ["الحيوانات والنباتات والفطريات", "البكتيريا فقط", "الفيروسات فقط", "الأميبا فقط"], ans: "الحيوانات والنباتات والفطريات" },
+            { q: "التركيب الذى يحيط بالمادة الوراثية فى الخلية حقيقية النواة يسمى:", options: ["الغشاء النووى", "جدار الخلية", "الغشاء البلازمى", "الفجوة العصارية"], ans: "الغشاء النووى" },
+            { q: "التركيب الذى يحيط بالخلية النباتية من الخارج ويكسبها الصلابة يسمى:", options: ["جدار الخلية", "الغشاء النووى", "السيتوبلازم", "الريبوسومات"], ans: "جدار الخلية" },
+            { q: "من التراكيب المشتركة بين الخلية النباتية والحيوانية والبكتيرية:", options: ["السيتوبلازم", "البلاستيدات الخضراء", "الفجوة العصارية الكبيرة", "الجسم المركزى"], ans: "السيتوبلازم" },
+            { q: "خلايا الدم الحمراء وخلايا الأمعاء وخلايا الكبد وخلايا العضلات كلها ناتجة عن تمايز:", options: ["الخلايا الجذعية", "الخلايا البكتيرية", "الخلايا النباتية", "الفيروسات"], ans: "الخلايا الجذعية" },
+            { q: "الخلايا الجذعية تمتاز بخاصيتين أساسيتين هما قدرتها على تجديد نفسها وقدرتها على:", options: ["التمايز لأنواع متخصصة من الخلايا", "الانقسام لمرة واحدة فقط", "الموت الفورى بعد التكوين", "التحول لمادة غير حية"], ans: "التمايز لأنواع متخصصة من الخلايا" },
+            // Hard
+            { q: "الفطريات مثل فطر عيش الغراب وفطر عفن الخبز وفطر الخميرة تُصنف ضمن:", options: ["حقيقيات النواة عديدة أو وحيدة الخلية", "أوليات النواة فقط", "الحيوانات فقط", "لا تصنف ضمن الكائنات الحية"], ans: "حقيقيات النواة عديدة أو وحيدة الخلية" },
+            { q: "فطر الخميرة كائن حى وحيد الخلية بينما فطر عيش الغراب كائن حى:", options: ["عديد الخلايا", "وحيد الخلية أيضًا", "ليس كائنًا حيًا", "من أوليات النواة"], ans: "عديد الخلايا" },
+            { q: "أوجه التشابه بين البكتيريا والأميبا أن كليهما كائن حى، بينما وجه الاختلاف الرئيسى أن البكتيريا من أوليات النواة والأميبا من:", options: ["حقيقيات النواة", "أوليات النواة أيضًا", "النباتات", "الفطريات عديدة الخلايا"], ans: "حقيقيات النواة" },
+            { q: "يمكن مشاهدة الكائنات وحيدة الخلية مثل الأميبا والبراميسيوم واليوجلينا باستخدام:", options: ["الميكروسكوب الضوئى", "العين المجردة مباشرة", "التلسكوب", "الميزان الحساس"], ans: "الميكروسكوب الضوئى" },
+            { q: "الخلايا الجذعية فى جسم الإنسان يمكنها التحول إلى خلايا متخصصة مثل الخلايا العصبية وخلايا الكبد وخلايا العضلات وخلايا:", options: ["الأمعاء", "النباتات", "البكتيريا", "الفطريات"], ans: "الأمعاء" }
+        ];
+
+        const shootData = [
+            { q: "الشكل التنظيمى فى جسم الإنسان يبدأ من الخلية وينتهى بـ:", options: ["الكائن الحى ككل", "الذرة", "الجزيء", "النواة فقط"], ans: "الكائن الحى ككل" },
+            { q: "الكائنات الحية تصنف تبعًا لنوع الخلية إلى أوليات النواة وحقيقيات النواة، وحقيقيات النواة تنقسم بدورها إلى:", options: ["كائنات وحيدة الخلية وكائنات عديدة الخلايا", "بكتيريا وفيروسات فقط", "نباتات فقط بلا حيوانات", "كائنات مجهرية فقط"], ans: "كائنات وحيدة الخلية وكائنات عديدة الخلايا" },
+            { q: "التركيب الذى يوجد فى الخلية النباتية ويقوم بعملية البناء الضوئى هو:", options: ["البلاستيدة الخضراء", "الميتوكوندريا", "جدار الخلية", "الفجوة العصارية"], ans: "البلاستيدة الخضراء" },
+            { q: "التركيب الموجود فى كل من الخلية النباتية والحيوانية والبكتيرية والمسئول عن إنتاج الطاقة (فى حقيقيات النواة) هو:", options: ["الميتوكوندريا", "البلاستيدة الخضراء", "جدار الخلية", "الجسم المركزى"], ans: "الميتوكوندريا" },
+            { q: "طين الصلصال يتحول إلى أشكال عديدة من الفخار، وبالمثل فإن الخلايا الجذعية يمكنها التحول إلى:", options: ["أنواع عديدة من الخلايا المتخصصة", "شكل واحد ثابت فقط", "مادة غير حية", "بلورات معدنية"], ans: "أنواع عديدة من الخلايا المتخصصة" },
+            { q: "من خصائص الخلايا الجذعية: قدرتها على تجديد نفسها من خلال الانقسام وإنتاج المزيد من الخلايا الجذعية، وقدرتها أيضًا على:", options: ["التمايز لأنواع متخصصة من الخلايا الموجودة بالجسم", "الانقسام لمرة واحدة فقط طوال حياتها", "البقاء دون تغيير طوال العمر", "التحول لمادة غير عضوية"], ans: "التمايز لأنواع متخصصة من الخلايا الموجودة بالجسم" },
+            { q: "الخلايا غير المتمايزة (الخلايا الجذعية) لها القدرة على التحول والتمايز إلى جميع خلايا الجسم:", options: ["المتمايزة التى تؤدى كل منها وظيفة متخصصة", "المتشابهة الوظيفة فقط", "الميتة فقط", "البكتيرية فقط"], ans: "المتمايزة التى تؤدى كل منها وظيفة متخصصة" },
+            { q: "من التطبيقات الطبية المأمولة لدراسات الخلايا الجذعية: زيادة فهم حدوث المرض، إنتاج خلايا سليمة تحل محل الخلايا المصابة، و:", options: ["اختبار الأدوية الجديدة قبل استخدامها بالمعامل", "تلوين الأقمشة", "تحسين طعم الأغذية", "تنقية المياه فقط"], ans: "اختبار الأدوية الجديدة قبل استخدامها بالمعامل" },
+            { q: "أوجه التشابه بين الخلية الحيوانية والخلية النباتية أن كلًا منهما تحتوى على النواة والسيتوبلازم و:", options: ["الغشاء البلازمى والميتوكوندريا والريبوسومات", "جدار الخلية فقط", "البلاستيدات الخضراء فقط", "الفجوة العصارية الكبيرة فقط"], ans: "الغشاء البلازمى والميتوكوندريا والريبوسومات" },
+            { q: "أوجه الاختلاف بين الخلية النباتية والحيوانية أن الخلية النباتية تحتوى على جدار خلوى وبلاستيدات خضراء وفجوة عصارية كبيرة بينما الخلية الحيوانية تحتوى على:", options: ["جسم مركزى (سنتروسوم) بدلًا من ذلك", "نواة فقط دون سيتوبلازم", "غشاء نووى فقط دون نواة", "لا تحتوى على أى من هذه التراكيب"], ans: "جسم مركزى (سنتروسوم) بدلًا من ذلك" },
+            // Hard
+            { q: "الفرق بين أوليات النواة وحقيقيات النواة أن حقيقيات النواة تحتوى على مادة وراثية محاطة بغشاء نووى (نواة حقيقية) بينما أوليات النواة:", options: ["توجد مادتها الوراثية طليقة فى السيتوبلازم غير محاطة بغشاء نووى", "لا تحتوى على مادة وراثية إطلاقًا", "تحتوى على نواتين بدلًا من واحدة", "أكبر حجمًا من حقيقيات النواة دائمًا"], ans: "توجد مادتها الوراثية طليقة فى السيتوبلازم غير محاطة بغشاء نووى" },
+            { q: "حقيقيات النواة كائنات حية قد تكون وحيدة الخلية أو عديدة الخلايا وتحتوى على نواة حقيقية بغشاء نووى، وتتميز عمومًا بحجمها الأكبر نسبيًا وتعقيد تركيبها مقارنة بـ:", options: ["أوليات النواة", "الفيروسات فقط", "الجزيئات العضوية فقط", "الذرات فقط"], ans: "أوليات النواة" },
+            { q: "الفرق فى وظيفة الخلية تبعًا لاختلاف تركيبها ينطبق على خلايا النسيج العضلى المكونة من ألياف عضلية طويلة تمكنها من أداء وظيفة:", options: ["الانقباض والانبساط", "التمثيل الضوئى فقط", "إفراز الإنزيمات الهضمية فقط", "نقل الإشارات العصبية فقط"], ans: "الانقباض والانبساط" },
+            { q: "دور بنك الخلايا الجذعية فى العلاج الطبى فى المستقبل يتمثل فى إمكانية:", options: ["توفير خلايا سليمة لعلاج الأمراض المختلفة", "تخزين الأدوية الكيميائية فقط", "حفظ العينات الحيوانية فقط", "تصنيع اللقاحات التقليدية فقط"], ans: "توفير خلايا سليمة لعلاج الأمراض المختلفة" },
+            { q: "الخلية هى وحدة البناء والوظيفة فى الكائن الحى، وهذا يعنى أن كل خلية تقوم بمجموعة من العمليات الحيوية المختلفة كالتغذية والنمو و:", options: ["التنفس", "الطيران فقط", "الإبصار فقط", "السمع فقط"], ans: "التنفس" }
+        ];
+
+        const tfData = [
+            { text: "الخلية هى وحدة البناء والوظيفة فى الكائن الحى.", isCorrect: true },
+            { text: "ترتيب مستويات التنظيم فى جسم الإنسان هو: خلية، نسيج، عضو، جهاز.", isCorrect: true },
+            { text: "أوليات النواة هى كائنات حية تحتوى خلاياها على نواة حقيقية محاطة بغشاء نووى.", isCorrect: false },
+            { text: "حقيقيات النواة هى كائنات حية تحتوى خلاياها على مادة وراثية محاطة بغشاء نووى.", isCorrect: true },
+            { text: "جميع أوليات النواة مثل البكتيريا كائنات وحيدة الخلية.", isCorrect: true },
+            { text: "الخلية النباتية تحتوى على جدار خلوى وبلاستيدات خضراء وفجوة عصارية كبيرة لا توجد فى الخلية الحيوانية.", isCorrect: true },
+            { text: "الخلية الحيوانية تحتوى على الجسم المركزى (السنتروسوم) الذى لا يوجد فى الخلية النباتية.", isCorrect: true },
+            { text: "الخلايا الجذعية خلايا متمايزة تمامًا ولا يمكنها التحول إلى أنواع أخرى من الخلايا.", isCorrect: false },
+            { text: "تمتلك الخلايا الجذعية القدرة على تجديد نفسها والتمايز إلى خلايا متخصصة.", isCorrect: true },
+            { text: "خلايا الدم الحمراء وخلايا الكبد وخلايا العضلات كلها ناتجة عن تمايز الخلايا الجذعية.", isCorrect: true },
+            // Hard
+            { text: "فطر عيش الغراب كائن حى وحيد الخلية بينما فطر الخميرة كائن حى عديد الخلايا.", isCorrect: false },
+            { text: "يمكن مشاهدة الكائنات وحيدة الخلية مثل الأميبا واليوجلينا باستخدام الميكروسكوب الضوئى.", isCorrect: true },
+            { text: "تختلف وظيفة الخلية باختلاف تركيبها، فخلايا النسيج العضلى مكونة من ألياف طويلة تمكنها من الانقباض والانبساط.", isCorrect: true },
+            { text: "يأمل الباحثون أن تساعد دراسات الخلايا الجذعية فى إنتاج خلايا سليمة تحل محل الخلايا المصابة بالأمراض.", isCorrect: true },
+            { text: "أوليات النواة أكبر حجمًا وأكثر تعقيدًا فى التركيب من حقيقيات النواة.", isCorrect: false }
+        ];
+
+        const matchData = [
+            { a: "الخلية", b: "وحدة البناء والوظيفة فى الكائن الحى" },
+            { a: "النسيج", b: "مجموعة من الخلايا المتشابهة تؤدى وظيفة معينة" },
+            { a: "أوليات النواة", b: "كائنات حية مادتها الوراثية غير محاطة بغشاء نووى" },
+            { a: "حقيقيات النواة", b: "كائنات حية تحتوى على نواة حقيقية محاطة بغشاء نووى" },
+            { a: "البكتيريا", b: "مثال على كائن حى من أوليات النواة" },
+            { a: "الأميبا", b: "مثال على كائن حى وحيد الخلية من حقيقيات النواة" },
+            { a: "جدار الخلية", b: "تركيب يوجد فى الخلية النباتية ويكسبها الصلابة" },
+            { a: "الجسم المركزى (السنتروسوم)", b: "تركيب يوجد فى الخلية الحيوانية دون النباتية" },
+            { a: "الخلايا الجذعية", b: "خلايا غير متمايزة قادرة على التجديد والتحول لخلايا متخصصة" },
+            { a: "فطر الخميرة", b: "مثال على كائن حى وحيد الخلية من الفطريات" },
+            // Hard
+            { a: "البلاستيدة الخضراء", b: "تركيب يقوم بعملية البناء الضوئى فى الخلية النباتية" },
+            { a: "الميتوكوندريا", b: "تركيب مسئول عن إنتاج الطاقة فى الخلايا حقيقية النواة" },
+            { a: "خلايا النسيج العضلى", b: "ألياف طويلة متخصصة فى الانقباض والانبساط" },
+            { a: "بنك الخلايا الجذعية", b: "له دور مأمول فى العلاج الطبى فى المستقبل" },
+            { a: "فطر عيش الغراب", b: "مثال على كائن حى عديد الخلايا من الفطريات" }
+        ];
+
+        const fillData = [
+            { text: "الوحدة الأساسية لبناء ووظيفة الكائن الحى هى ... .", blank: "الخلية", options: ["الخلية", "النسيج", "العضو", "الجهاز"] },
+            { text: "الكائنات التى تحتوى خلاياها على مادة وراثية غير محاطة بغشاء نووى تسمى ... النواة.", blank: "أوليات", options: ["أوليات", "حقيقيات", "عديدة", "مفردة"] },
+            { text: "الكائنات التى تحتوى خلاياها على نواة حقيقية محاطة بغشاء نووى تسمى ... النواة.", blank: "حقيقيات", options: ["حقيقيات", "أوليات", "نصفية", "بدائية"] },
+            { text: "من أمثلة الكائنات وحيدة الخلية حقيقية النواة: الأميبا و... .", blank: "البراميسيوم", options: ["البراميسيوم", "الإنسان", "الأسد", "الفول"] },
+            { text: "جميع أوليات النواة مثل البكتيريا كائنات ... الخلية.", blank: "وحيدة", options: ["وحيدة", "عديدة", "منعدمة", "متعددة الأنوية"] },
+            { text: "يوجد فى الخلية النباتية جدار خلوى وبلاستيدات خضراء وفجوة ... كبيرة.", blank: "عصارية", options: ["عصارية", "هوائية", "دهنية", "مائية فقط"] },
+            { text: "يوجد فى الخلية الحيوانية تركيب يسمى الجسم ... .", blank: "المركزى", options: ["المركزى", "الجانبى", "العلوى", "السفلى"] },
+            { text: "الخلايا التى لها القدرة على التجديد والتمايز لأنواع متخصصة تسمى الخلايا ... .", blank: "الجذعية", options: ["الجذعية", "العصبية فقط", "العضلية فقط", "الدموية فقط"] },
+            { text: "خلايا الدم وخلايا الكبد وخلايا العضلات كلها ناتجة عن تمايز الخلايا ... .", blank: "الجذعية", options: ["الجذعية", "البكتيرية", "النباتية", "الفطرية"] },
+            { text: "يأمل الباحثون أن تساعد دراسات الخلايا الجذعية فى علاج ... .", blank: "الأمراض", options: ["الأمراض", "الألوان", "الأصوات", "الروائح"] },
+            // Hard
+            { text: "فطر عيش الغراب كائن حى ... الخلايا.", blank: "عديد", options: ["عديد", "وحيد", "منعدم", "نصفى"] },
+            { text: "فطر الخميرة كائن حى ... الخلية.", blank: "وحيد", options: ["وحيد", "عديد", "منعدم", "مزدوج"] },
+            { text: "خلايا النسيج العضلى مكونة من ألياف طويلة تمكنها من الانقباض و... .", blank: "الانبساط", options: ["الانبساط", "الانقسام", "التكاثر", "الإفراز"] },
+            { text: "التركيب المسئول عن البناء الضوئى فى الخلية النباتية هو ... .", blank: "البلاستيدة الخضراء", options: ["البلاستيدة الخضراء", "الميتوكوندريا", "جدار الخلية", "النواة"] },
+            { text: "التركيب المسئول عن إنتاج الطاقة فى الخلية حقيقية النواة هو ... .", blank: "الميتوكوندريا", options: ["الميتوكوندريا", "البلاستيدة الخضراء", "الفجوة العصارية", "جدار الخلية"] }
+        ];
+
+        // --- Core Logic & Timer ---
+        let gameState = { currentScreen: 'home', activeGame: null, score: 0, questionIndex: 0, subLevel: 0, tempData: null, onFeedbackClose: null };
+        const titles = { mcq: "الاختيار من متعدد", match: "لعبة التوصيل", tf: "صح أم خطأ", fill: "الكلمة المفقودة", bubbles: "الفقاعات المتساقطة", shoot: "التنشين المتحرك" };
+        let gameTimer, timeLeft = 60, maxTime = 60;
+        let animTimeout;
+
+        function startTimer() {
+            clearInterval(gameTimer); 
+            // All games get 60 seconds
+            maxTime = 60;
+            timeLeft = maxTime; 
+            updateTimerUI();
+            
+            gameTimer = setInterval(() => {
+                timeLeft--; updateTimerUI();
+                if (timeLeft <= 0) { clearInterval(gameTimer); handleTimeout(); }
+            }, 1000);
+        }
+
+        function stopTimer() { clearInterval(gameTimer); }
+        
+        function resumeTimer() {
+            clearInterval(gameTimer);
+            gameTimer = setInterval(() => {
+                timeLeft--; updateTimerUI();
+                if (timeLeft <= 0) { clearInterval(gameTimer); handleTimeout(); }
+            }, 1000);
+        }
+
+        function updateTimerUI() {
+            document.getElementById('timer-display').innerText = timeLeft;
+            document.getElementById('timer-bar').style.width = (timeLeft / maxTime * 100) + '%';
+        }
+
+        function pauseAnimations() {
+            document.querySelectorAll('.game-anim-element').forEach(t => t.style.animationPlayState = 'paused');
+        }
+
+        function handleTimeout() {
+            playSound('wrong');
+            pauseAnimations();
+
+            if (gameState.activeGame === 'match') { forceMatchSkip(); return; }
+
+            const qData = gameState.tempData[gameState.questionIndex];
+            let correctAns = qData.ans || (qData.isCorrect ? "صح" : "خطأ") || qData.blank;
+            
+            showFeedback(false, `انتهى الوقت! الإجابة الصحيحة هي: ${correctAns}`, () => {
+                gameState.questionIndex++;
+                if (gameState.activeGame === 'mcq') loadMCQQuestion();
+                else if (gameState.activeGame === 'tf') loadTFQuestion();
+                else if (gameState.activeGame === 'fill') loadFillQuestion();
+                else if (gameState.activeGame === 'bubbles') loadBubblesQuestion();
+                else if (gameState.activeGame === 'shoot') loadShootQuestion();
+            });
+        }
+
+        function showScreen(screenId) {
+            document.querySelectorAll('#main-container > div').forEach(el => {
+                if (el.id !== 'game-header' && el.id !== 'screen-home') el.classList.add('hidden');
+            });
+            if (screenId === 'home') {
+                document.getElementById('screen-home').classList.remove('hidden');
+                document.getElementById('game-header').classList.add('hidden');
+            } else {
+                document.getElementById('screen-home').classList.add('hidden');
+                document.getElementById('game-header').classList.remove('hidden');
+                document.getElementById('screen-' + screenId).classList.remove('hidden');
+                document.getElementById('current-game-title').innerText = titles[gameState.activeGame];
+                updateScoreDisplay();
+            }
+            gameState.currentScreen = screenId;
+        }
+
+        function goHome() {
+            playSound('click'); stopTimer(); pauseAnimations(); clearTimeout(animTimeout);
+            document.getElementById('feedback-modal').classList.add('hidden');
+            gameState.onFeedbackClose = null; showScreen('home');
+            document.getElementById('endgame-modal').classList.add('hidden'); gameState.activeGame = null;
+        }
+
+        function startGame(gameType) {
+            playSound('click'); initAudio(); 
+            gameState.activeGame = gameType; gameState.score = 0; gameState.questionIndex = 0; gameState.subLevel = 0;
+            
+            if (gameType === 'bubbles' || gameType === 'shoot') {
+                document.getElementById('timer-container').classList.add('opacity-0');
+            } else {
+                document.getElementById('timer-container').classList.remove('opacity-0');
+            }
+
+            if (gameType === 'mcq') initMCQ();
+            else if (gameType === 'match') initMatch();
+            else if (gameType === 'tf') initTF();
+            else if (gameType === 'fill') initFill();
+            else if (gameType === 'bubbles') initBubbles();
+            else if (gameType === 'shoot') initShoot();
+            showScreen(gameType);
+        }
+
+        function updateScoreDisplay() { document.getElementById('current-score').innerText = gameState.score; }
+        function endGame() {
+            stopTimer(); document.getElementById('endgame-score').innerText = gameState.score;
+            document.getElementById('endgame-modal').classList.remove('hidden'); playSound('correct');
+        }
+
+        function showFeedback(isCorrect, message, callback) {
+            const modal = document.getElementById('feedback-modal'); const content = document.getElementById('feedback-content');
+            const icon = document.getElementById('feedback-icon'); const title = document.getElementById('feedback-title');
+            const msg = document.getElementById('feedback-msg');
+            gameState.onFeedbackClose = callback;
+
+            if (isCorrect) {
+                playSound('correct'); icon.innerHTML = '<i class="fa-solid fa-circle-check text-green-500 popup-anim"></i>';
+                title.innerText = "إجابة صحيحة!"; title.className = "text-2xl font-bold mb-2 text-green-600";
+            } else {
+                playSound('wrong'); icon.innerHTML = '<i class="fa-solid fa-circle-xmark text-red-500 popup-anim"></i>';
+                title.innerText = "إجابة خاطئة"; title.className = "text-2xl font-bold mb-2 text-red-600";
+            }
+            msg.innerText = message || ""; modal.classList.remove('hidden');
+            setTimeout(() => { content.classList.remove('scale-50', 'opacity-0'); content.classList.add('scale-100', 'opacity-100'); }, 10);
+        }
+
+        function closeFeedback() {
+            playSound('click'); const modal = document.getElementById('feedback-modal');
+            const content = document.getElementById('feedback-content');
+            content.classList.remove('scale-100', 'opacity-100'); content.classList.add('scale-50', 'opacity-0');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                if (gameState.onFeedbackClose) { gameState.onFeedbackClose(); gameState.onFeedbackClose = null; }
+            }, 300);
+        }
+
+        // --- 1. MCQ ---
+        function initMCQ() { gameState.tempData = shuffleArray(mcqData); loadMCQQuestion(); }
+        function loadMCQQuestion() {
+            if (gameState.questionIndex >= 15) return endGame();
+            const qData = gameState.tempData[gameState.questionIndex];
+            document.getElementById('mcq-question').innerText = (gameState.questionIndex + 1) + ". " + qData.q;
+            document.getElementById('mcq-progress').style.width = `${(gameState.questionIndex / 15) * 100}%`;
+            const optionsDiv = document.getElementById('mcq-options'); optionsDiv.innerHTML = '';
+            shuffleArray(qData.options).forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = "btn-bounce w-full bg-white border-2 border-blue-200 hover:bg-blue-50 text-blue-900 font-bold py-4 px-6 rounded-xl text-right shadow-sm text-lg transition-colors";
+                btn.innerText = opt; btn.onclick = () => { stopTimer(); checkMCQ(opt, qData.ans); };
+                optionsDiv.appendChild(btn);
+            });
+            startTimer();
+        }
+        function checkMCQ(selected, correct) {
+            const isCorrect = selected === correct;
+            if (isCorrect) gameState.score++; updateScoreDisplay();
+            showFeedback(isCorrect, isCorrect ? "أحسنت!" : `الإجابة الصحيحة هي: ${correct}`, () => { gameState.questionIndex++; loadMCQQuestion(); });
+        }
+
+        // --- 2. Bubbles Game (CSS Animation) ---
+        function initBubbles() { gameState.tempData = shuffleArray(bubblesData); loadBubblesQuestion(); }
+        function loadBubblesQuestion() {
+            if (gameState.questionIndex >= 15) return endGame();
+            const qData = gameState.tempData[gameState.questionIndex];
+            document.getElementById('bubbles-question').innerText = (gameState.questionIndex + 1) + ". " + qData.q;
+            document.getElementById('bubbles-progress').style.width = `${(gameState.questionIndex / 15) * 100}%`;
+            
+            const container = document.getElementById('bubbles-game-area'); container.innerHTML = '';
+            const opts = shuffleArray(qData.options);
+            const xPositions = [2, 27, 52, 77]; 
+
+            opts.forEach((opt, idx) => {
+                const bubble = document.createElement('div');
+                bubble.className = `game-anim-element anim-fall game-bubble absolute flex items-center justify-center p-2 w-20 h-20 sm:w-28 sm:h-28 text-xs sm:text-sm font-bold text-center cursor-pointer btn-bounce z-10`;
+                bubble.style.left = `${xPositions[idx]}%`;
+                bubble.innerText = opt;
+                bubble.onclick = () => processAnimGame(opt, qData.ans, 'bubbles');
+                container.appendChild(bubble);
+            });
+            
+            clearTimeout(animTimeout);
+            animTimeout = setTimeout(() => {
+                if (gameState.currentScreen === 'bubbles') processAnimTimeout('bubbles', qData.ans);
+            }, 25000);
+        }
+
+        // --- 3. Shoot Game (CSS Animation) ---
+        function initShoot() { gameState.tempData = shuffleArray(shootData); loadShootQuestion(); }
+        function loadShootQuestion() {
+            if (gameState.questionIndex >= 15) return endGame();
+            const qData = gameState.tempData[gameState.questionIndex];
+            document.getElementById('shoot-question').innerText = (gameState.questionIndex + 1) + ". " + qData.q;
+            document.getElementById('shoot-progress').style.width = `${(gameState.questionIndex / 15) * 100}%`;
+            
+            const container = document.getElementById('shoot-game-area'); container.innerHTML = '';
+            const opts = shuffleArray(qData.options);
+            const colors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b']; 
+            const yPositions = [10, 35, 60, 85]; 
+            const directions = [1, -1, 1, -1]; 
+
+            opts.forEach((opt, idx) => {
+                const target = document.createElement('div');
+                let animClass = directions[idx] === 1 ? 'anim-right' : 'anim-left';
+                target.className = `game-anim-element ${animClass} horizontal-target absolute text-gray-800 p-1 rounded-full text-center font-bold flex flex-col items-center justify-center w-20 h-20 sm:w-24 sm:h-24 text-[10px] sm:text-sm cursor-pointer z-10 btn-bounce`;
+                target.style.borderColor = colors[idx]; 
+                target.style.top = `calc(${yPositions[idx]}% - 20px)`;
+                
+                target.innerHTML = `<i class="fa-solid fa-bullseye text-2xl sm:text-3xl mb-1" style="color: ${colors[idx]}"></i><span>${opt}</span>`;
+                target.onclick = () => processAnimGame(opt, qData.ans, 'shoot');
+                container.appendChild(target);
+            });
+            
+            clearTimeout(animTimeout);
+            animTimeout = setTimeout(() => {
+                if (gameState.currentScreen === 'shoot') processAnimTimeout('shoot', qData.ans);
+            }, 20000);
+        }
+
+        // Shared processing for Animated Games (Bubbles & Shoot)
+        function processAnimGame(selected, correct, gameType) {
+            clearTimeout(animTimeout);
+            pauseAnimations();
+            const isCorrect = selected === correct;
+            if(isCorrect) gameState.score++; updateScoreDisplay();
+            showFeedback(isCorrect, isCorrect ? "إصابة دقيقة وممتازة!" : `للأسف أخطأت الهدف! الإجابة هي: ${correct}`, () => {
+                gameState.questionIndex++;
+                if(gameType === 'bubbles') loadBubblesQuestion(); else loadShootQuestion();
+            });
+        }
+
+        function processAnimTimeout(gameType, correct) {
+            playSound('wrong');
+            pauseAnimations();
+            showFeedback(false, `اختفت الأهداف! الإجابة الصحيحة هي: ${correct}`, () => {
+                gameState.questionIndex++;
+                if(gameType === 'bubbles') loadBubblesQuestion(); else loadShootQuestion();
+            });
+        }
+
+        // --- 4. True/False ---
+        function initTF() { gameState.tempData = shuffleArray(tfData); loadTFQuestion(); }
+        function loadTFQuestion() {
+            if (gameState.questionIndex >= 15) return endGame();
+            const currentItem = gameState.tempData[gameState.questionIndex];
+            document.getElementById('tf-progress').style.width = `${(gameState.questionIndex / 15) * 100}%`;
+            const tfStatement = document.getElementById('tf-statement'); tfStatement.innerText = currentItem.text;
+            tfStatement.classList.remove('popup-anim'); void tfStatement.offsetWidth; tfStatement.classList.add('popup-anim');
+            startTimer();
+        }
+        function checkTF(userAnswer) {
+            stopTimer(); const currentItem = gameState.tempData[gameState.questionIndex];
+            const isCorrect = currentItem.isCorrect === userAnswer;
+            if(isCorrect) gameState.score++; updateScoreDisplay();
+            showFeedback(isCorrect, isCorrect ? "إجابة صحيحة وممتازة!" : `إجابة خاطئة. العبارة ${currentItem.isCorrect?"صحيحة":"خاطئة"}.`, () => {
+                gameState.questionIndex++; loadTFQuestion();
+            });
+        }
+
+        // --- 5. Matching ---
+        function initMatch() { gameState.tempData = shuffleArray(matchData); gameState.subLevel = 0; gameState.questionIndex = 0; loadMatchRound(); }
+        function loadMatchRound() {
+            if (gameState.subLevel >= 3) return endGame();
+            const startIndex = gameState.subLevel * 5; const roundItems = gameState.tempData.slice(startIndex, startIndex + 5);
+            document.getElementById('match-progress').style.width = `${(gameState.questionIndex / 15) * 100}%`;
+            const listA = shuffleArray(roundItems.map(item => ({id: item.a, text: item.a, type: 'A'})));
+            const listB = shuffleArray(roundItems.map(item => ({id: item.a, text: item.b, type: 'B'}))); 
+            renderMatchList('match-list-a', listA); renderMatchList('match-list-b', listB);
+            matchSelectedA = null; matchSelectedB = null; startTimer();
+        }
+        function renderMatchList(containerId, items) {
+            const container = document.getElementById(containerId); container.innerHTML = '';
+            items.forEach(item => {
+                const btn = document.createElement('button');
+                btn.className = "match-item bg-white border-2 border-gray-200 text-gray-700 font-bold py-3 px-2 rounded-lg shadow-sm text-xs sm:text-sm text-center min-h-[60px] flex items-center justify-center";
+                btn.innerText = item.text; btn.dataset.id = item.id; btn.dataset.type = item.type;
+                btn.onclick = () => handleMatchClick(btn); container.appendChild(btn);
+            });
+        }
+        function handleMatchClick(btn) {
+            if(btn.classList.contains('matched') || btn.classList.contains('timeout-error')) return;
+            playSound('click'); const type = btn.dataset.type;
+            document.querySelectorAll(`#match-list-${type.toLowerCase()} .match-item`).forEach(el => {
+                if(!el.classList.contains('matched') && !el.classList.contains('timeout-error')) el.classList.remove('selected');
+            });
+            btn.classList.add('selected');
+            if (type === 'A') matchSelectedA = btn; else matchSelectedB = btn;
+            if (matchSelectedA && matchSelectedB) {
+                stopTimer(); const idA = matchSelectedA.dataset.id; const idB = matchSelectedB.dataset.id;
+                if (idA === idB) {
+                    matchSelectedA.classList.remove('selected'); matchSelectedA.classList.add('matched');
+                    matchSelectedB.classList.remove('selected'); matchSelectedB.classList.add('matched');
+                    gameState.score++; gameState.questionIndex++; updateScoreDisplay();
+                    document.getElementById('match-progress').style.width = `${(gameState.questionIndex / 15) * 100}%`;
+                    checkMatchRoundProgress(true);
+                } else {
+                    playSound('wrong'); matchSelectedA.classList.add('error'); matchSelectedB.classList.add('error');
+                    let a = matchSelectedA, b = matchSelectedB;
+                    setTimeout(() => { a.classList.remove('selected', 'error'); b.classList.remove('selected', 'error'); resumeTimer(); }, 500);
+                }
+                matchSelectedA = null; matchSelectedB = null;
+            }
+        }
+        function forceMatchSkip() {
+            matchSelectedA = null; matchSelectedB = null;
+            document.querySelectorAll('.match-item').forEach(el => el.classList.remove('selected'));
+            let unmatchedA = Array.from(document.querySelectorAll('#match-list-a .match-item')).find(el => !el.classList.contains('matched') && !el.classList.contains('timeout-error'));
+            if(unmatchedA) {
+                let id = unmatchedA.dataset.id; let unmatchedB = document.querySelector(`#match-list-b .match-item[data-id="${id}"]`);
+                showFeedback(false, "انتهى الوقت! فقدت هذه النقطة.", () => {
+                    unmatchedA.classList.add('timeout-error'); 
+                    if(unmatchedB) unmatchedB.classList.add('timeout-error');
+                    gameState.questionIndex++; document.getElementById('match-progress').style.width = `${(gameState.questionIndex / 15) * 100}%`;
+                    checkMatchRoundProgress(false);
+                });
+            }
+        }
+        function checkMatchRoundProgress(wasCorrect) {
+            const totalDone = document.querySelectorAll('#match-list-a .matched').length + document.querySelectorAll('#match-list-a .timeout-error').length;
+            if (totalDone === 5) {
+                if(wasCorrect) playSound('correct');
+                setTimeout(() => { gameState.subLevel++; loadMatchRound(); }, 1000);
+            } else {
+                if(wasCorrect) {
+                    playSound('correct'); 
+                }
+                startTimer();
+            }
+        }
+
+        // --- 6. Fill in the Blanks ---
+        function initFill() { gameState.tempData = shuffleArray(fillData); loadFillQuestion(); }
+        function loadFillQuestion() {
+            if (gameState.questionIndex >= 15) return endGame();
+            const currentItem = gameState.tempData[gameState.questionIndex];
+            document.getElementById('fill-progress').style.width = `${(gameState.questionIndex / 15) * 100}%`;
+            const sentenceHtml = currentItem.text.replace('...', '<span class="inline-block border-b-4 border-dashed border-purple-400 min-w-[70px] md:min-w-[100px] text-center text-purple-600 px-1 md:px-2 pb-1 mx-1 md:mx-2 relative top-1">؟</span>');
+            const sentenceEl = document.getElementById('fill-sentence'); sentenceEl.innerHTML = sentenceHtml;
+            sentenceEl.classList.remove('popup-anim'); void sentenceEl.offsetWidth; sentenceEl.classList.add('popup-anim');
+            const optionsContainer = document.getElementById('fill-options'); optionsContainer.innerHTML = '';
+            shuffleArray(currentItem.options).forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = "btn-bounce bg-white hover:bg-purple-50 border-2 border-purple-200 text-purple-800 font-bold py-3 md:py-4 px-3 md:px-6 rounded-xl shadow-sm text-sm sm:text-base md:text-lg transition-colors";
+                btn.innerText = opt; btn.onclick = () => { stopTimer(); checkFill(opt, currentItem.blank); };
+                optionsContainer.appendChild(btn);
+            });
+            startTimer();
+        }
+        function checkFill(selected, correct) {
+            const isCorrect = selected === correct;
+            if (isCorrect) gameState.score++; updateScoreDisplay();
+            const sentenceEl = document.getElementById('fill-sentence');
+            if (isCorrect) sentenceEl.innerHTML = sentenceEl.innerHTML.replace('؟', selected).replace('border-dashed', 'border-solid border-green-500 text-green-600');
+            else sentenceEl.innerHTML = sentenceEl.innerHTML.replace('؟', selected).replace('border-dashed', 'border-solid border-red-500 text-red-600 line-through');
+            showFeedback(isCorrect, isCorrect ? "ممتاز! الكلمة في مكانها الصحيح." : `خطأ! الكلمة الصحيحة هي: ${correct}`, () => {
+                gameState.questionIndex++; loadFillQuestion();
+            });
+        }
+
+    </script>
+</body>
+</html>
